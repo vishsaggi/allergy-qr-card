@@ -57,6 +57,7 @@ export function AllergyBarcodeApp() {
   const [savedForm, setSavedForm] = useState<AllergyForm | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [isLocalPreview, setIsLocalPreview] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const isComplete = useMemo(
     () =>
@@ -68,7 +69,6 @@ export function AllergyBarcodeApp() {
   );
   const hasUnsavedChanges =
     savedForm == null || JSON.stringify(normalizeForm(form)) !== JSON.stringify(savedForm);
-  const canGenerateQr = savedForm != null && isComplete && !hasUnsavedChanges;
 
   useEffect(() => {
     setIsLocalPreview(["localhost", "127.0.0.1"].includes(window.location.hostname));
@@ -79,31 +79,31 @@ export function AllergyBarcodeApp() {
     setQrDataUrl("");
   }
 
-  function saveCard() {
+  async function saveCard() {
     if (!isComplete) {
       return;
     }
 
-    setSavedForm(normalizeForm(form));
+    const nextSavedForm = normalizeForm(form);
+    setIsSaving(true);
     setQrDataUrl("");
-  }
 
-  async function generateQrCode() {
-    if (!canGenerateQr || savedForm == null) {
-      return;
+    try {
+      const publicCardUrl = `${getPublicBaseUrl()}/card#${encodeCard(nextSavedForm)}`;
+      const dataUrl = await QRCode.toDataURL(publicCardUrl, {
+        errorCorrectionLevel: "M",
+        margin: 2,
+        width: 640,
+        color: {
+          dark: "#111111",
+          light: "#ffffff",
+        },
+      });
+      setSavedForm(nextSavedForm);
+      setQrDataUrl(dataUrl);
+    } finally {
+      setIsSaving(false);
     }
-
-    const publicCardUrl = `${getPublicBaseUrl()}/card#${encodeCard(savedForm)}`;
-    const dataUrl = await QRCode.toDataURL(publicCardUrl, {
-      errorCorrectionLevel: "M",
-      margin: 2,
-      width: 640,
-      color: {
-        dark: "#111111",
-        light: "#ffffff",
-      },
-    });
-    setQrDataUrl(dataUrl);
   }
 
   function clearCard() {
@@ -140,7 +140,7 @@ export function AllergyBarcodeApp() {
                 required
                 value={form.childName}
                 onChange={(event) => updateField("childName", event.target.value)}
-                className="mt-2 h-12 w-full rounded-xl border border-white/10 bg-transparent px-4 text-base font-semibold text-white outline-none transition focus:border-[#5fa0ff] focus:ring-4 focus:ring-[#5fa0ff]/15"
+                className="mt-2 h-12 w-full rounded-xl border border-white/10 bg-transparent px-4 text-base font-normal text-white outline-none transition focus:border-[#5fa0ff] focus:ring-4 focus:ring-[#5fa0ff]/15"
               />
             </label>
 
@@ -152,14 +152,14 @@ export function AllergyBarcodeApp() {
                   aria-label="Emergency contact name"
                   value={form.emergencyName}
                   onChange={(event) => updateField("emergencyName", event.target.value)}
-                  className="h-12 rounded-xl border border-white/10 bg-transparent px-4 text-base font-semibold text-white outline-none transition focus:border-[#5fa0ff] focus:ring-4 focus:ring-[#5fa0ff]/15"
+                  className="h-12 rounded-xl border border-white/10 bg-transparent px-4 text-base font-normal text-white outline-none transition focus:border-[#5fa0ff] focus:ring-4 focus:ring-[#5fa0ff]/15"
                 />
                 <input
                   required
                   aria-label="Emergency phone number"
                   value={form.emergencyPhone}
                   onChange={(event) => updateField("emergencyPhone", event.target.value)}
-                  className="h-12 rounded-xl border border-white/10 bg-transparent px-4 text-base font-semibold text-white outline-none transition focus:border-[#5fa0ff] focus:ring-4 focus:ring-[#5fa0ff]/15"
+                  className="h-12 rounded-xl border border-white/10 bg-transparent px-4 text-base font-normal text-white outline-none transition focus:border-[#5fa0ff] focus:ring-4 focus:ring-[#5fa0ff]/15"
                 />
               </div>
             </div>
@@ -170,7 +170,7 @@ export function AllergyBarcodeApp() {
                 required
                 value={form.allergyInformation}
                 onChange={(event) => updateField("allergyInformation", event.target.value)}
-                className="mt-2 min-h-[104px] w-full resize-y rounded-xl border border-white/10 bg-transparent px-4 py-3 text-base font-semibold leading-snug text-white outline-none transition focus:border-[#5fa0ff] focus:ring-4 focus:ring-[#5fa0ff]/15"
+                className="mt-2 min-h-[104px] w-full resize-y rounded-xl border border-white/10 bg-transparent px-4 py-3 text-base font-normal leading-snug text-white outline-none transition focus:border-[#5fa0ff] focus:ring-4 focus:ring-[#5fa0ff]/15"
               />
             </label>
           </div>
@@ -178,12 +178,12 @@ export function AllergyBarcodeApp() {
           <div className="mt-6 flex gap-3">
             <button
               type="button"
-              disabled={!isComplete}
+              disabled={!isComplete || isSaving}
               onClick={saveCard}
               className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2f80dc] px-4 text-base font-bold text-white transition hover:bg-[#3b8cec] disabled:cursor-not-allowed disabled:bg-[#3b3b38] disabled:text-white/35"
             >
               <Save className="h-5 w-5" />
-              Save
+              {isSaving ? "Saving..." : "Save"}
             </button>
             <button
               type="button"
@@ -223,15 +223,12 @@ export function AllergyBarcodeApp() {
                   />
                 </button>
               ) : (
-                <button
-                  type="button"
-                  disabled={!canGenerateQr}
-                  onClick={generateQrCode}
-                  aria-label="Generate QR code"
-                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-[#171717] text-white transition hover:bg-[#101010] disabled:cursor-not-allowed disabled:text-white/22"
+                <div
+                  aria-label="QR code will appear after saving"
+                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-[#171717] text-white/22"
                 >
                   <QrCode className="h-8 w-8" />
-                </button>
+                </div>
               )}
             </div>
 
